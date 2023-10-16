@@ -27,6 +27,7 @@ import (
 	"github.com/answerdev/answer/internal/repo/unique"
 	"github.com/answerdev/answer/internal/repo/user"
 	"github.com/answerdev/answer/internal/repo/user_external_login"
+	"github.com/answerdev/answer/internal/repo/user_notification_config"
 	"github.com/google/wire"
 )
 
@@ -52,7 +53,6 @@ var ProviderSetRepo = wire.NewSet(
 	activity.NewVoteRepo,
 	activity.NewFollowRepo,
 	activity.NewAnswerActivityRepo,
-	activity.NewQuestionActivityRepo,
 	activity.NewUserActiveActivityRepo,
 	activity.NewActivityRepo,
 	tag.NewTagRepo,
@@ -74,4 +74,5 @@ var ProviderSetRepo = wire.NewSet(
 	role.NewPowerRepo,
 	user_external_login.NewUserExternalLoginRepo,
 	plugin_config.NewPluginConfigRepo,
+	user_notification_config.NewUserNotificationConfigRepo,
 )

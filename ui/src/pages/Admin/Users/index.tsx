@@ -19,11 +19,12 @@ import {
   useChangeModal,
   useChangeUserRoleModal,
   useChangePasswordModal,
+  useActivationEmailModal,
   useToast,
 } from '@/hooks';
 import {
   useQueryUsers,
-  addUser,
+  addUsers,
   updateUserPassword,
   getAdminUcAgent,
   AdminUcAgent,
@@ -88,7 +89,7 @@ const Users: FC = () => {
   const userModal = useUserModal({
     onConfirm: (userModel) => {
       return new Promise((resolve, reject) => {
-        addUser(userModel)
+        addUsers(userModel)
           .then(() => {
             if (/all|staff/.test(curFilter) && curPage === 1) {
               refreshUsers();
@@ -119,6 +120,8 @@ const Users: FC = () => {
     },
   });
 
+  const activationEmailModal = useActivationEmailModal();
+
   const handleAction = (type, user) => {
     const { user_id, status, role_id, username } = user;
     if (username === currentUser.username) {
@@ -128,6 +131,7 @@ const Users: FC = () => {
       });
       return;
     }
+
     if (type === 'status') {
       changeModal.onShow({
         id: user_id,
@@ -141,8 +145,13 @@ const Users: FC = () => {
         role_id,
       });
     }
+
     if (type === 'password') {
       changePasswordModal.onShow(user_id);
+    }
+
+    if (type === 'activation') {
+      activationEmailModal.onShow(user_id);
     }
   };
 
@@ -160,16 +169,21 @@ const Users: FC = () => {
   }, [ucAgent]);
   const showAddUser =
     !ucAgent?.enabled || (ucAgent?.enabled && adminUcAgent?.allow_create_user);
+
   const showActionPassword =
     !ucAgent?.enabled ||
     (ucAgent?.enabled && adminUcAgent?.allow_update_user_password);
+
   const showActionRole =
     !ucAgent?.enabled ||
     (ucAgent?.enabled && adminUcAgent?.allow_update_user_role);
+
   const showActionStatus =
     !ucAgent?.enabled ||
     (ucAgent?.enabled && adminUcAgent?.allow_update_user_status);
+
   const showAction = showActionPassword || showActionRole || showActionStatus;
+
   return (
     <>
       <h3 className="mb-4">{t('title')}</h3>
@@ -193,6 +207,7 @@ const Users: FC = () => {
 
         <Form.Control
           size="sm"
+          type="search"
           value={curQuery}
           onChange={handleFilter}
           placeholder={t('filter.placeholder')}
@@ -227,6 +242,8 @@ const Users: FC = () => {
         </thead>
         <tbody className="align-middle">
           {data?.list.map((user) => {
+            const showActionActivation = user.status === 'inactive';
+
             return (
               <tr key={user.user_id}>
                 <td>
@@ -237,6 +254,7 @@ const Users: FC = () => {
                     avatarSearchStr="s=48"
                     avatarClass="me-2"
                     showReputation={false}
+                    nameMaxWidth="160px"
                   />
                 </td>
                 <td>{formatCount(user.rank)}</td>
@@ -266,11 +284,12 @@ const Users: FC = () => {
                     </span>
                   </td>
                 )}
-                {curFilter !== 'deleted' && showAction ? (
+                {curFilter !== 'deleted' &&
+                (showAction || showActionActivation) ? (
                   <td className="text-end">
                     <Dropdown>
                       <Dropdown.Toggle variant="link" className="no-toggle">
-                        <Icon name="three-dots-vertical" />
+                        <Icon name="three-dots-vertical" title={t('action')} />
                       </Dropdown.Toggle>
                       <Dropdown.Menu>
                         {showActionPassword ? (
@@ -289,6 +308,12 @@ const Users: FC = () => {
                           <Dropdown.Item
                             onClick={() => handleAction('role', user)}>
                             {t('change_role')}
+                          </Dropdown.Item>
+                        ) : null}
+                        {showActionActivation ? (
+                          <Dropdown.Item
+                            onClick={() => handleAction('activation', user)}>
+                            {t('btn_name', { keyPrefix: 'inactive' })}
                           </Dropdown.Item>
                         ) : null}
                       </Dropdown.Menu>

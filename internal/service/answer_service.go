@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/answerdev/answer/pkg/token"
 	"time"
 
 	"github.com/answerdev/answer/internal/base/constant"
@@ -22,27 +23,28 @@ import (
 	"github.com/answerdev/answer/internal/service/revision_common"
 	"github.com/answerdev/answer/internal/service/role"
 	usercommon "github.com/answerdev/answer/internal/service/user_common"
-	"github.com/answerdev/answer/pkg/encryption"
 	"github.com/answerdev/answer/pkg/uid"
 	"github.com/segmentfault/pacman/errors"
-	"github.com/segmentfault/pacman/i18n"
 	"github.com/segmentfault/pacman/log"
 )
 
 // AnswerService user service
 type AnswerService struct {
-	answerRepo            answercommon.AnswerRepo
-	questionRepo          questioncommon.QuestionRepo
-	questionCommon        *questioncommon.QuestionCommon
-	answerActivityService *activity.AnswerActivityService
-	userCommon            *usercommon.UserCommon
-	collectionCommon      *collectioncommon.CollectionCommon
-	userRepo              usercommon.UserRepo
-	revisionService       *revision_common.RevisionService
-	AnswerCommon          *answercommon.AnswerCommon
-	voteRepo              activity_common.VoteRepo
-	emailService          *export.EmailService
-	roleService           *role.UserRoleRelService
+	answerRepo                       answercommon.AnswerRepo
+	questionRepo                     questioncommon.QuestionRepo
+	questionCommon                   *questioncommon.QuestionCommon
+	answerActivityService            *activity.AnswerActivityService
+	userCommon                       *usercommon.UserCommon
+	collectionCommon                 *collectioncommon.CollectionCommon
+	userRepo                         usercommon.UserRepo
+	revisionService                  *revision_common.RevisionService
+	AnswerCommon                     *answercommon.AnswerCommon
+	voteRepo                         activity_common.VoteRepo
+	emailService                     *export.EmailService
+	roleService                      *role.UserRoleRelService
+	notificationQueueService         notice_queue.NotificationQueueService
+	externalNotificationQueueService notice_queue.ExternalNotificationQueueService
+	activityQueueService             activity_queue.ActivityQueueService
 }
 
 func NewAnswerService(
@@ -58,20 +60,26 @@ func NewAnswerService(
 	voteRepo activity_common.VoteRepo,
 	emailService *export.EmailService,
 	roleService *role.UserRoleRelService,
+	notificationQueueService notice_queue.NotificationQueueService,
+	externalNotificationQueueService notice_queue.ExternalNotificationQueueService,
+	activityQueueService activity_queue.ActivityQueueService,
 ) *AnswerService {
 	return &AnswerService{
-		answerRepo:            answerRepo,
-		questionRepo:          questionRepo,
-		userCommon:            userCommon,
-		collectionCommon:      collectionCommon,
-		questionCommon:        questionCommon,
-		userRepo:              userRepo,
-		revisionService:       revisionService,
-		answerActivityService: answerAcceptActivityRepo,
-		AnswerCommon:          answerCommon,
-		voteRepo:              voteRepo,
-		emailService:          emailService,
-		roleService:           roleService,
+		answerRepo:                       answerRepo,
+		questionRepo:                     questionRepo,
+		userCommon:                       userCommon,
+		collectionCommon:                 collectionCommon,
+		questionCommon:                   questionCommon,
+		userRepo:                         userRepo,
+		revisionService:                  revisionService,
+		answerActivityService:            answerAcceptActivityRepo,
+		AnswerCommon:                     answerCommon,
+		voteRepo:                         voteRepo,
+		emailService:                     emailService,
+		roleService:                      roleService,
+		notificationQueueService:         notificationQueueService,
+		externalNotificationQueueService: externalNotificationQueueService,
+		activityQueueService:             activityQueueService,
 	}
 }
 
@@ -136,7 +144,7 @@ func (as *AnswerService) RemoveAnswer(ctx context.Context, req *schema.RemoveAns
 	//if err != nil {
 	//	log.Errorf("delete answer activity change failed: %s", err.Error())
 	//}
-	activity_queue.AddActivity(&schema.ActivityMsg{
+	as.activityQueueService.Send(ctx, &schema.ActivityMsg{
 		UserID:           req.UserID,
 		ObjectID:         answerInfo.ID,
 		OriginalObjectID: answerInfo.ID,
@@ -205,14 +213,14 @@ func (as *AnswerService) Insert(ctx context.Context, req *schema.AnswerAddReq) (
 	as.notificationAnswerTheQuestion(ctx, questionInfo.UserID, questionInfo.ID, insertData.ID, req.UserID, questionInfo.Title,
 		insertData.OriginalText)
 
-	activity_queue.AddActivity(&schema.ActivityMsg{
+	as.activityQueueService.Send(ctx, &schema.ActivityMsg{
 		UserID:           insertData.UserID,
 		ObjectID:         insertData.ID,
 		OriginalObjectID: insertData.ID,
 		ActivityTypeKey:  constant.ActAnswerAnswered,
 		RevisionID:       revisionID,
 	})
-	activity_queue.AddActivity(&schema.ActivityMsg{
+	as.activityQueueService.Send(ctx, &schema.ActivityMsg{
 		UserID:           insertData.UserID,
 		ObjectID:         insertData.ID,
 		OriginalObjectID: questionInfo.ID,
@@ -222,15 +230,13 @@ func (as *AnswerService) Insert(ctx context.Context, req *schema.AnswerAddReq) (
 }
 
 func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq) (string, error) {
-	//req.NoNeedReview //true 不需要审核
 	var canUpdate bool
 	_, existUnreviewed, err := as.revisionService.ExistUnreviewedByObjectID(ctx, req.ID)
 	if err != nil {
 		return "", err
 	}
 	if existUnreviewed {
-		err = errors.BadRequest(reason.AnswerCannotUpdate)
-		return "", err
+		return "", errors.BadRequest(reason.AnswerCannotUpdate)
 	}
 
 	questionInfo, exist, err := as.questionRepo.GetQuestion(ctx, req.QuestionID)
@@ -246,12 +252,11 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
 		return "", err
 	}
 	if !exist {
-		return "", nil
+		return "", errors.BadRequest(reason.AnswerNotFound)
 	}
 
 	if answerInfo.Status == entity.AnswerStatusDeleted {
-		err = errors.BadRequest(reason.AnswerCannotUpdate)
-		return "", err
+		return "", errors.BadRequest(reason.AnswerCannotUpdate)
 	}
 
 	//If the content is the same, ignore it
@@ -259,15 +264,13 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
 		return "", nil
 	}
 
-	now := time.Now()
-	insertData := new(entity.Answer)
+	insertData := &entity.Answer{}
 	insertData.ID = req.ID
 	insertData.UserID = answerInfo.UserID
 	insertData.QuestionID = req.QuestionID
 	insertData.OriginalText = req.Content
 	insertData.ParsedText = req.HTML
-	insertData.UpdatedAt = now
-
+	insertData.UpdatedAt = time.Now()
 	insertData.LastEditUserID = "0"
 	if answerInfo.UserID != req.UserID {
 		insertData.LastEditUserID = req.UserID
@@ -276,7 +279,6 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
 	revisionDTO := &schema.AddRevisionDTO{
 		UserID:   req.UserID,
 		ObjectID: req.ID,
-		Title:    "",
 		Log:      req.EditSummary,
 	}
 
@@ -305,8 +307,8 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
 		return insertData.ID, err
 	}
 	if canUpdate {
-		activity_queue.AddActivity(&schema.ActivityMsg{
-			UserID:           insertData.UserID,
+		as.activityQueueService.Send(ctx, &schema.ActivityMsg{
+			UserID:           req.UserID,
 			ObjectID:         insertData.ID,
 			OriginalObjectID: insertData.ID,
 			ActivityTypeKey:  constant.ActAnswerEdited,
@@ -317,47 +319,47 @@ func (as *AnswerService) Update(ctx context.Context, req *schema.AnswerUpdateReq
 	return insertData.ID, nil
 }
 
-// UpdateAccepted
-func (as *AnswerService) UpdateAccepted(ctx context.Context, req *schema.AnswerAcceptedReq) error {
-	if req.AnswerID == "" {
-		req.AnswerID = "0"
-	}
-	if req.UserID == "" {
-		return nil
-	}
-
-	newAnswerInfo := &entity.Answer{}
-	newAnswerInfoexist := false
-	var err error
-
-	if req.AnswerID != "0" {
-		newAnswerInfo, newAnswerInfoexist, err = as.answerRepo.GetByID(ctx, req.AnswerID)
-		if err != nil {
-			return err
-		}
-		newAnswerInfo.ID = uid.DeShortID(newAnswerInfo.ID)
-		if !newAnswerInfoexist {
-			return errors.BadRequest(reason.AnswerNotFound)
-		}
-	}
-
+// AcceptAnswer accept answer
+func (as *AnswerService) AcceptAnswer(ctx context.Context, req *schema.AcceptAnswerReq) (err error) {
+	// find question
 	questionInfo, exist, err := as.questionRepo.GetQuestion(ctx, req.QuestionID)
 	if err != nil {
 		return err
 	}
-	questionInfo.ID = uid.DeShortID(questionInfo.ID)
 	if !exist {
 		return errors.BadRequest(reason.QuestionNotFound)
 	}
-	// if questionInfo.UserID != req.UserID {
-	// 	return fmt.Errorf("no permission to set answer")
-	// }
+	questionInfo.ID = uid.DeShortID(questionInfo.ID)
 	if questionInfo.AcceptedAnswerID == req.AnswerID {
 		return nil
 	}
 
+	// find answer
+	var acceptedAnswerInfo *entity.Answer
+	if len(req.AnswerID) > 1 {
+		acceptedAnswerInfo, exist, err = as.answerRepo.GetByID(ctx, req.AnswerID)
+		if err != nil {
+			return err
+		}
+		if !exist {
+			return errors.BadRequest(reason.AnswerNotFound)
+		}
+		acceptedAnswerInfo.ID = uid.DeShortID(acceptedAnswerInfo.ID)
+	}
+
+	// update answers status
+	if err = as.answerRepo.UpdateAcceptedStatus(ctx, req.AnswerID, req.QuestionID); err != nil {
+		return err
+	}
+
+	// update question status
+	err = as.questionCommon.UpdateAccepted(ctx, req.QuestionID, req.AnswerID)
+	if err != nil {
+		log.Error("UpdateLastAnswer error", err.Error())
+	}
+
 	var oldAnswerInfo *entity.Answer
-	if len(questionInfo.AcceptedAnswerID) > 0 && questionInfo.AcceptedAnswerID != "0" {
+	if len(questionInfo.AcceptedAnswerID) > 1 {
 		oldAnswerInfo, _, err = as.answerRepo.GetByID(ctx, questionInfo.AcceptedAnswerID)
 		if err != nil {
 			return err
@@ -365,17 +367,7 @@ func (as *AnswerService) UpdateAccepted(ctx context.Context, req *schema.AnswerA
 		oldAnswerInfo.ID = uid.DeShortID(oldAnswerInfo.ID)
 	}
 
-	err = as.answerRepo.UpdateAccepted(ctx, req.AnswerID, req.QuestionID)
-	if err != nil {
-		return err
-	}
-
-	err = as.questionCommon.UpdateAccepted(ctx, req.QuestionID, req.AnswerID)
-	if err != nil {
-		log.Error("UpdateLastAnswer error", err.Error())
-	}
-
-	as.updateAnswerRank(ctx, req.UserID, questionInfo, newAnswerInfo, oldAnswerInfo)
+	as.updateAnswerRank(ctx, req.UserID, questionInfo, acceptedAnswerInfo, oldAnswerInfo)
 	return nil
 }
 
@@ -384,15 +376,15 @@ func (as *AnswerService) updateAnswerRank(ctx context.Context, userID string,
 ) {
 	// if this question is already been answered, should cancel old answer rank
 	if oldAnswerInfo != nil {
-		err := as.answerActivityService.CancelAcceptAnswer(
-			ctx, questionInfo.AcceptedAnswerID, questionInfo.ID, questionInfo.UserID, oldAnswerInfo.UserID)
+		err := as.answerActivityService.CancelAcceptAnswer(ctx, userID,
+			questionInfo.AcceptedAnswerID, questionInfo.ID, questionInfo.UserID, oldAnswerInfo.UserID)
 		if err != nil {
 			log.Error(err)
 		}
 	}
-	if newAnswerInfo.ID != "" {
-		err := as.answerActivityService.AcceptAnswer(
-			ctx, newAnswerInfo.ID, questionInfo.ID, questionInfo.UserID, newAnswerInfo.UserID, newAnswerInfo.UserID == userID)
+	if newAnswerInfo != nil {
+		err := as.answerActivityService.AcceptAnswer(ctx, userID, newAnswerInfo.ID,
+			questionInfo.ID, questionInfo.UserID, newAnswerInfo.UserID, newAnswerInfo.UserID == questionInfo.UserID)
 		if err != nil {
 			log.Error(err)
 		}
@@ -435,12 +427,11 @@ func (as *AnswerService) Get(ctx context.Context, answerID, loginUserID string) 
 
 	info.VoteStatus = as.voteRepo.GetVoteStatus(ctx, answerID, loginUserID)
 
-	CollectedMap, err := as.collectionCommon.SearchObjectCollected(ctx, loginUserID, []string{answerInfo.ID})
+	collectedMap, err := as.collectionCommon.SearchObjectCollected(ctx, loginUserID, []string{answerInfo.ID})
 	if err != nil {
-		log.Error("CollectionFunc.SearchObjectCollected error", err)
+		return nil, nil, has, err
 	}
-	_, ok = CollectedMap[answerInfo.ID]
-	if ok {
+	if len(collectedMap) > 0 {
 		info.Collected = true
 	}
 
@@ -472,7 +463,7 @@ func (as *AnswerService) AdminSetAnswerStatus(ctx context.Context, req *schema.A
 		//if err != nil {
 		//	log.Errorf("admin delete question then rank rollback error %s", err.Error())
 		//}
-		activity_queue.AddActivity(&schema.ActivityMsg{
+		as.activityQueueService.Send(ctx, &schema.ActivityMsg{
 			UserID:           req.UserID,
 			ObjectID:         answerInfo.ID,
 			OriginalObjectID: answerInfo.ID,
@@ -487,7 +478,7 @@ func (as *AnswerService) AdminSetAnswerStatus(ctx context.Context, req *schema.A
 	msg.TriggerUserID = answerInfo.UserID
 	msg.ObjectType = constant.AnswerObjectType
 	msg.NotificationAction = constant.NotificationYourAnswerWasDeleted
-	notice_queue.AddNotification(msg)
+	as.notificationQueueService.Send(ctx, msg)
 
 	return nil
 }
@@ -521,46 +512,28 @@ func (as *AnswerService) SearchFormatInfo(ctx context.Context, answers []*entity
 		item := as.ShowFormat(ctx, info)
 		list = append(list, item)
 		objectIDs = append(objectIDs, info.ID)
-		userIDs = append(userIDs, info.UserID)
-		userIDs = append(userIDs, info.LastEditUserID)
-		if req.UserID != "" {
-			item.ID = uid.DeShortID(item.ID)
-			item.VoteStatus = as.voteRepo.GetVoteStatus(ctx, item.ID, req.UserID)
-		}
+		userIDs = append(userIDs, info.UserID, info.LastEditUserID)
 	}
+
 	userInfoMap, err := as.userCommon.BatchUserBasicInfoByID(ctx, userIDs)
 	if err != nil {
 		return list, err
 	}
 	for _, item := range list {
-		_, ok := userInfoMap[item.UserID]
-		if ok {
-			item.UserInfo = userInfoMap[item.UserID]
-		}
-		_, ok = userInfoMap[item.UpdateUserID]
-		if ok {
-			item.UpdateUserInfo = userInfoMap[item.UpdateUserID]
-		}
+		item.UserInfo = userInfoMap[item.UserID]
+		item.UpdateUserInfo = userInfoMap[item.UpdateUserID]
 	}
-
-	if req.UserID == "" {
+	if len(req.UserID) == 0 {
 		return list, nil
 	}
 
-	searchObjectCollected, err := as.collectionCommon.SearchObjectCollected(ctx, req.UserID, objectIDs)
+	collectedMap, err := as.collectionCommon.SearchObjectCollected(ctx, req.UserID, objectIDs)
 	if err != nil {
 		return nil, err
 	}
-
 	for _, item := range list {
-		_, ok := searchObjectCollected[item.ID]
-		if ok {
-			item.Collected = true
-		}
-	}
-
-	for _, item := range list {
-		item.ID = uid.EnShortID(item.ID)
+		item.VoteStatus = as.voteRepo.GetVoteStatus(ctx, item.ID, req.UserID)
+		item.Collected = collectedMap[item.ID]
 		item.MemberActions = permission.GetAnswerPermission(ctx, req.UserID, item.UserID, req.CanEdit, req.CanDelete)
 	}
 	return list, nil
@@ -579,7 +552,7 @@ func (as *AnswerService) notificationUpdateAnswer(ctx context.Context, questionU
 	}
 	msg.ObjectType = constant.AnswerObjectType
 	msg.NotificationAction = constant.NotificationUpdateAnswer
-	notice_queue.AddNotification(msg)
+	as.notificationQueueService.Send(ctx, msg)
 }
 
 func (as *AnswerService) notificationAnswerTheQuestion(ctx context.Context,
@@ -596,9 +569,9 @@ func (as *AnswerService) notificationAnswerTheQuestion(ctx context.Context,
 	}
 	msg.ObjectType = constant.AnswerObjectType
 	msg.NotificationAction = constant.NotificationAnswerTheQuestion
-	notice_queue.AddNotification(msg)
+	as.notificationQueueService.Send(ctx, msg)
 
-	userInfo, exist, err := as.userRepo.GetByUserID(ctx, questionUserID)
+	receiverUserInfo, exist, err := as.userRepo.GetByUserID(ctx, questionUserID)
 	if err != nil {
 		log.Error(err)
 		return
@@ -607,37 +580,23 @@ func (as *AnswerService) notificationAnswerTheQuestion(ctx context.Context,
 		log.Warnf("user %s not found", questionUserID)
 		return
 	}
-	if userInfo.NoticeStatus == schema.NoticeStatusOff || len(userInfo.EMail) == 0 {
-		return
-	}
 
+	externalNotificationMsg := &schema.ExternalNotificationMsg{
+		ReceiverUserID: receiverUserInfo.ID,
+		ReceiverEmail:  receiverUserInfo.EMail,
+		ReceiverLang:   receiverUserInfo.Language,
+	}
 	rawData := &schema.NewAnswerTemplateRawData{
 		QuestionTitle:   questionTitle,
 		QuestionID:      questionID,
 		AnswerID:        answerID,
 		AnswerSummary:   answerSummary,
-		UnsubscribeCode: encryption.MD5(userInfo.Pass),
+		UnsubscribeCode: token.GenerateToken(),
 	}
 	answerUser, _, _ := as.userCommon.GetUserBasicInfoByID(ctx, answerUserID)
 	if answerUser != nil {
 		rawData.AnswerUserDisplayName = answerUser.DisplayName
 	}
-	codeContent := &schema.EmailCodeContent{
-		SourceType: schema.UnsubscribeSourceType,
-		Email:      userInfo.EMail,
-		UserID:     userInfo.ID,
-	}
-
-	// If receiver has set language, use it to send email.
-	if len(userInfo.Language) > 0 {
-		ctx = context.WithValue(ctx, constant.AcceptLanguageFlag, i18n.Language(userInfo.Language))
-	}
-	title, body, err := as.emailService.NewAnswerTemplate(ctx, rawData)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-
-	go as.emailService.SendAndSaveCodeWithTime(
-		ctx, userInfo.EMail, title, body, rawData.UnsubscribeCode, codeContent.ToJSONString(), 7*24*time.Hour)
+	externalNotificationMsg.NewAnswerTemplateRawData = rawData
+	as.externalNotificationQueueService.Send(ctx, externalNotificationMsg)
 }

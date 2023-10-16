@@ -4,6 +4,7 @@ import (
 	"github.com/answerdev/answer/internal/service/action"
 	"github.com/answerdev/answer/internal/service/activity"
 	"github.com/answerdev/answer/internal/service/activity_common"
+	"github.com/answerdev/answer/internal/service/activity_queue"
 	answercommon "github.com/answerdev/answer/internal/service/answer_common"
 	"github.com/answerdev/answer/internal/service/auth"
 	collectioncommon "github.com/answerdev/answer/internal/service/collection_common"
@@ -14,6 +15,7 @@ import (
 	"github.com/answerdev/answer/internal/service/export"
 	"github.com/answerdev/answer/internal/service/follow"
 	"github.com/answerdev/answer/internal/service/meta"
+	"github.com/answerdev/answer/internal/service/notice_queue"
 	"github.com/answerdev/answer/internal/service/notification"
 	notficationcommon "github.com/answerdev/answer/internal/service/notification_common"
 	"github.com/answerdev/answer/internal/service/object_info"
@@ -35,6 +37,7 @@ import (
 	"github.com/answerdev/answer/internal/service/user_admin"
 	usercommon "github.com/answerdev/answer/internal/service/user_common"
 	"github.com/answerdev/answer/internal/service/user_external_login"
+	"github.com/answerdev/answer/internal/service/user_notification_config"
 	"github.com/google/wire"
 )
 
@@ -86,4 +89,9 @@ var ProviderSetService = wire.NewSet(
 	user_external_login.NewUserCenterLoginService,
 	plugin_common.NewPluginCommonService,
 	config.NewConfigService,
+	notice_queue.NewNotificationQueueService,
+	activity_queue.NewActivityQueueService,
+	user_notification_config.NewUserNotificationConfigService,
+	notification.NewExternalNotificationService,
+	notice_queue.NewNewQuestionNotificationQueueService,
 )

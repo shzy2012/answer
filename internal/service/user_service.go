@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/answerdev/answer/internal/base/constant"
+	"github.com/answerdev/answer/internal/service/user_notification_config"
 	"time"
 
 	"github.com/answerdev/answer/internal/base/handler"
@@ -28,19 +30,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// UserRepo user repository
-
 // UserService user service
 type UserService struct {
-	userCommonService        *usercommon.UserCommon
-	userRepo                 usercommon.UserRepo
-	userActivity             activity.UserActiveActivityRepo
-	activityRepo             activity_common.ActivityRepo
-	emailService             *export.EmailService
-	authService              *auth.AuthService
-	siteInfoService          *siteinfo_common.SiteInfoCommonService
-	userRoleService          *role.UserRoleRelService
-	userExternalLoginService *user_external_login.UserExternalLoginService
+	userCommonService             *usercommon.UserCommon
+	userRepo                      usercommon.UserRepo
+	userActivity                  activity.UserActiveActivityRepo
+	activityRepo                  activity_common.ActivityRepo
+	emailService                  *export.EmailService
+	authService                   *auth.AuthService
+	siteInfoService               siteinfo_common.SiteInfoCommonService
+	userRoleService               *role.UserRoleRelService
+	userExternalLoginService      *user_external_login.UserExternalLoginService
+	userNotificationConfigRepo    user_notification_config.UserNotificationConfigRepo
+	userNotificationConfigService *user_notification_config.UserNotificationConfigService
 }
 
 func NewUserService(userRepo usercommon.UserRepo,
@@ -48,21 +50,25 @@ func NewUserService(userRepo usercommon.UserRepo,
 	activityRepo activity_common.ActivityRepo,
 	emailService *export.EmailService,
 	authService *auth.AuthService,
-	siteInfoService *siteinfo_common.SiteInfoCommonService,
+	siteInfoService siteinfo_common.SiteInfoCommonService,
 	userRoleService *role.UserRoleRelService,
 	userCommonService *usercommon.UserCommon,
 	userExternalLoginService *user_external_login.UserExternalLoginService,
+	userNotificationConfigRepo user_notification_config.UserNotificationConfigRepo,
+	userNotificationConfigService *user_notification_config.UserNotificationConfigService,
 ) *UserService {
 	return &UserService{
-		userCommonService:        userCommonService,
-		userRepo:                 userRepo,
-		userActivity:             userActivity,
-		activityRepo:             activityRepo,
-		emailService:             emailService,
-		authService:              authService,
-		siteInfoService:          siteInfoService,
-		userRoleService:          userRoleService,
-		userExternalLoginService: userExternalLoginService,
+		userCommonService:             userCommonService,
+		userRepo:                      userRepo,
+		userActivity:                  userActivity,
+		activityRepo:                  activityRepo,
+		emailService:                  emailService,
+		authService:                   authService,
+		siteInfoService:               siteInfoService,
+		userRoleService:               userRoleService,
+		userExternalLoginService:      userExternalLoginService,
+		userNotificationConfigRepo:    userNotificationConfigRepo,
+		userNotificationConfigService: userNotificationConfigService,
 	}
 }
 
@@ -93,8 +99,7 @@ func (us *UserService) GetUserInfoByUserID(ctx context.Context, token, userID st
 }
 
 func (us *UserService) GetOtherUserInfoByUsername(ctx context.Context, username string) (
-	resp *schema.GetOtherUserInfoByUsernameResp, err error,
-) {
+	resp *schema.GetOtherUserInfoByUsernameResp, err error) {
 	userInfo, exist, err := us.userRepo.GetByUsername(ctx, username)
 	if err != nil {
 		return nil, err
@@ -109,7 +114,7 @@ func (us *UserService) GetOtherUserInfoByUsername(ctx context.Context, username 
 }
 
 // EmailLogin email login
-func (us *UserService) EmailLogin(ctx context.Context, req *schema.UserEmailLogin) (resp *schema.UserLoginResp, err error) {
+func (us *UserService) EmailLogin(ctx context.Context, req *schema.UserEmailLoginReq) (resp *schema.UserLoginResp, err error) {
 	userInfo, exist, err := us.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, err
@@ -345,14 +350,6 @@ func (us *UserService) formatUserInfoForUpdateInfo(
 	return userInfo
 }
 
-func (us *UserService) UserEmailHas(ctx context.Context, email string) (bool, error) {
-	_, has, err := us.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		return false, err
-	}
-	return has, nil
-}
-
 // UserUpdateInterface update user interface
 func (us *UserService) UserUpdateInterface(ctx context.Context, req *schema.UpdateUserInterfaceRequest) (err error) {
 	if !translator.CheckLanguageIsValid(req.Language) {
@@ -403,6 +400,9 @@ func (us *UserService) UserRegisterByEmail(ctx context.Context, registerUserInfo
 	err = us.userRepo.AddUser(ctx, userInfo)
 	if err != nil {
 		return nil, nil, err
+	}
+	if err := us.userNotificationConfigService.SetDefaultUserNotificationConfig(ctx, []string{userInfo.ID}); err != nil {
+		log.Errorf("set default user notification config failed, err: %v", err)
 	}
 
 	// send email
@@ -468,25 +468,6 @@ func (us *UserService) UserVerifyEmailSend(ctx context.Context, userID string) e
 	}
 	go us.emailService.SendAndSaveCode(ctx, userInfo.EMail, title, body, code, data.ToJSONString())
 	return nil
-}
-
-func (us *UserService) UserNoticeSet(ctx context.Context, userID string, noticeSwitch bool) (
-	resp *schema.UserNoticeSetResp, err error,
-) {
-	userInfo, has, err := us.userRepo.GetByUserID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !has {
-		return nil, errors.BadRequest(reason.UserNotFound)
-	}
-	if noticeSwitch {
-		userInfo.NoticeStatus = schema.NoticeStatusOn
-	} else {
-		userInfo.NoticeStatus = schema.NoticeStatusOff
-	}
-	err = us.userRepo.UpdateNoticeStatus(ctx, userInfo.ID, userInfo.NoticeStatus)
-	return &schema.UserNoticeSetResp{NoticeSwitch: noticeSwitch}, err
 }
 
 func (us *UserService) UserVerifyEmail(ctx context.Context, req *schema.UserVerifyEmailReq) (resp *schema.UserLoginResp, err error) {
@@ -606,7 +587,7 @@ func (us *UserService) UserChangeEmailSendCode(ctx context.Context, req *schema.
 	}
 	log.Infof("send email confirmation %s", verifyEmailURL)
 
-	go us.emailService.SendAndSaveCode(context.Background(), req.Email, title, body, code, data.ToJSONString())
+	go us.emailService.SendAndSaveCode(ctx, req.Email, title, body, code, data.ToJSONString())
 	return nil, nil
 }
 
@@ -720,23 +701,37 @@ func (us *UserService) UserRanking(ctx context.Context) (resp *schema.UserRankin
 	return us.warpStatRankingResp(userInfoMapping, rankStat, voteStat, userRoleRels), nil
 }
 
-// UserUnsubscribeEmailNotification user unsubscribe email notification
-func (us *UserService) UserUnsubscribeEmailNotification(
-	ctx context.Context, req *schema.UserUnsubscribeEmailNotificationReq) (err error) {
+// UserUnsubscribeNotification user unsubscribe email notification
+func (us *UserService) UserUnsubscribeNotification(
+	ctx context.Context, req *schema.UserUnsubscribeNotificationReq) (err error) {
 	data := &schema.EmailCodeContent{}
 	err = data.FromJSONString(req.Content)
 	if err != nil || len(data.UserID) == 0 {
 		return errors.BadRequest(reason.EmailVerifyURLExpired)
 	}
 
-	userInfo, exist, err := us.userRepo.GetByUserID(ctx, data.UserID)
-	if err != nil {
-		return err
+	for _, source := range data.NotificationSources {
+		notificationConfig, exist, err := us.userNotificationConfigRepo.GetByUserIDAndSource(
+			ctx, data.UserID, source)
+		if err != nil {
+			return err
+		}
+		if !exist {
+			continue
+		}
+		channels := schema.NewNotificationChannelsFormJson(notificationConfig.Channels)
+		// unsubscribe email notification
+		for _, channel := range channels {
+			if channel.Key == constant.EmailChannel {
+				channel.Enable = false
+			}
+		}
+		notificationConfig.Channels = channels.ToJsonString()
+		if err = us.userNotificationConfigRepo.Save(ctx, notificationConfig); err != nil {
+			return err
+		}
 	}
-	if !exist {
-		return errors.BadRequest(reason.UserNotFound)
-	}
-	return us.userRepo.UpdateNoticeStatus(ctx, userInfo.ID, schema.NoticeStatusOff)
+	return nil
 }
 
 func (us *UserService) getActivityUserRankStat(ctx context.Context, startTime, endTime time.Time, limit int,
@@ -817,22 +812,26 @@ func (us *UserService) getUserInfoMapping(ctx context.Context, userIDs []string)
 	return userInfoMapping, nil
 }
 
-func (us *UserService) SearchUserListByName(ctx context.Context, input *schema.GetOtherUserInfoByUsernameReq) ([]*schema.UserBasicInfo, error) {
-	userinfolist := make([]*schema.UserBasicInfo, 0)
-	list, err := us.userRepo.SearchUserListByName(ctx, input.Username)
+func (us *UserService) SearchUserListByName(ctx context.Context, req *schema.GetOtherUserInfoByUsernameReq) (
+	resp []*schema.UserBasicInfo, err error) {
+	resp = make([]*schema.UserBasicInfo, 0)
+	if len(req.Username) == 0 {
+		return resp, nil
+	}
+	userList, err := us.userRepo.SearchUserListByName(ctx, req.Username, 5)
 	if err != nil {
-		return userinfolist, err
+		return resp, err
 	}
-	avatarMapping := us.siteInfoService.FormatListAvatar(ctx, list)
-	for _, user := range list {
-		if input.UserID != user.ID {
-			userinfo := us.userCommonService.FormatUserBasicInfo(ctx, user)
-			userinfo.Avatar = avatarMapping[user.ID].GetURL()
-			userinfolist = append(userinfolist, userinfo)
+	avatarMapping := us.siteInfoService.FormatListAvatar(ctx, userList)
+	for _, u := range userList {
+		if req.UserID == u.ID {
+			continue
 		}
-
+		basicInfo := us.userCommonService.FormatUserBasicInfo(ctx, u)
+		basicInfo.Avatar = avatarMapping[u.ID].GetURL()
+		resp = append(resp, basicInfo)
 	}
-	return userinfolist, nil
+	return resp, nil
 }
 
 func (us *UserService) warpStatRankingResp(

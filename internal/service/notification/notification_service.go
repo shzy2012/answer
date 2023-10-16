@@ -46,13 +46,13 @@ func (ns *NotificationService) GetRedDot(ctx context.Context, req *schema.GetRed
 	redBot := &schema.RedDot{}
 	inboxKey := fmt.Sprintf("answer_RedDot_%d_%s", schema.NotificationTypeInbox, req.UserID)
 	achievementKey := fmt.Sprintf("answer_RedDot_%d_%s", schema.NotificationTypeAchievement, req.UserID)
-	inboxValue, err := ns.data.Cache.GetInt64(ctx, inboxKey)
+	inboxValue, _, err := ns.data.Cache.GetInt64(ctx, inboxKey)
 	if err != nil {
 		redBot.Inbox = 0
 	} else {
 		redBot.Inbox = inboxValue
 	}
-	achievementValue, err := ns.data.Cache.GetInt64(ctx, achievementKey)
+	achievementValue, _, err := ns.data.Cache.GetInt64(ctx, achievementKey)
 	if err != nil {
 		redBot.Achievement = 0
 	} else {
@@ -146,6 +146,7 @@ func (ns *NotificationService) GetNotificationPage(ctx context.Context, searchCo
 func (ns *NotificationService) formatNotificationPage(ctx context.Context, notifications []*entity.Notification) (
 	resp []*schema.NotificationContent, err error) {
 	lang := handler.GetLangByCtx(ctx)
+	enableShortID := handler.GetEnableShortID(ctx)
 	for _, notificationInfo := range notifications {
 		item := &schema.NotificationContent{}
 		if err := json.Unmarshal([]byte(notificationInfo.Content), item); err != nil {
@@ -163,17 +164,19 @@ func (ns *NotificationService) formatNotificationPage(ctx context.Context, notif
 		item.UpdateTime = notificationInfo.UpdatedAt.Unix()
 		item.IsRead = notificationInfo.IsRead == schema.NotificationRead
 
-		if answerID, ok := item.ObjectInfo.ObjectMap["answer"]; ok {
-			if item.ObjectInfo.ObjectID == answerID {
-				item.ObjectInfo.ObjectID = uid.EnShortID(item.ObjectInfo.ObjectMap["answer"])
+		if enableShortID {
+			if answerID, ok := item.ObjectInfo.ObjectMap["answer"]; ok {
+				if item.ObjectInfo.ObjectID == answerID {
+					item.ObjectInfo.ObjectID = uid.EnShortID(item.ObjectInfo.ObjectMap["answer"])
+				}
+				item.ObjectInfo.ObjectMap["answer"] = uid.EnShortID(item.ObjectInfo.ObjectMap["answer"])
 			}
-			item.ObjectInfo.ObjectMap["answer"] = uid.EnShortID(item.ObjectInfo.ObjectMap["answer"])
-		}
-		if questionID, ok := item.ObjectInfo.ObjectMap["question"]; ok {
-			if item.ObjectInfo.ObjectID == questionID {
-				item.ObjectInfo.ObjectID = uid.EnShortID(item.ObjectInfo.ObjectMap["question"])
+			if questionID, ok := item.ObjectInfo.ObjectMap["question"]; ok {
+				if item.ObjectInfo.ObjectID == questionID {
+					item.ObjectInfo.ObjectID = uid.EnShortID(item.ObjectInfo.ObjectMap["question"])
+				}
+				item.ObjectInfo.ObjectMap["question"] = uid.EnShortID(item.ObjectInfo.ObjectMap["question"])
 			}
-			item.ObjectInfo.ObjectMap["question"] = uid.EnShortID(item.ObjectInfo.ObjectMap["question"])
 		}
 
 		resp = append(resp, item)

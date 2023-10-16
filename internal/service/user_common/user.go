@@ -2,6 +2,7 @@ package usercommon
 
 import (
 	"context"
+	"github.com/answerdev/answer/internal/base/constant"
 	"strings"
 
 	"github.com/Chain-Zhang/pinyin"
@@ -36,7 +37,7 @@ type UserRepo interface {
 	GetByUsernames(ctx context.Context, usernames []string) ([]*entity.User, error)
 	GetByEmail(ctx context.Context, email string) (userInfo *entity.User, exist bool, err error)
 	GetUserCount(ctx context.Context) (count int64, err error)
-	SearchUserListByName(ctx context.Context, name string) (userList []*entity.User, err error)
+	SearchUserListByName(ctx context.Context, name string, limit int) (userList []*entity.User, err error)
 }
 
 // UserCommon user service
@@ -44,14 +45,14 @@ type UserCommon struct {
 	userRepo              UserRepo
 	userRoleService       *role.UserRoleRelService
 	authService           *auth.AuthService
-	siteInfoCommonService *siteinfo_common.SiteInfoCommonService
+	siteInfoCommonService siteinfo_common.SiteInfoCommonService
 }
 
 func NewUserCommon(
 	userRepo UserRepo,
 	userRoleService *role.UserRoleRelService,
 	authService *auth.AuthService,
-	siteInfoCommonService *siteinfo_common.SiteInfoCommonService,
+	siteInfoCommonService siteinfo_common.SiteInfoCommonService,
 ) *UserCommon {
 	return &UserCommon{
 		userRepo:              userRepo,
@@ -105,9 +106,12 @@ func (us *UserCommon) UpdateQuestionCount(ctx context.Context, userID string, nu
 	return us.userRepo.UpdateQuestionCount(ctx, userID, num)
 }
 
-func (us *UserCommon) BatchUserBasicInfoByID(ctx context.Context, IDs []string) (map[string]*schema.UserBasicInfo, error) {
+func (us *UserCommon) BatchUserBasicInfoByID(ctx context.Context, userIDs []string) (map[string]*schema.UserBasicInfo, error) {
 	userMap := make(map[string]*schema.UserBasicInfo)
-	userList, err := us.userRepo.BatchGetByID(ctx, IDs)
+	if len(userIDs) == 0 {
+		return userMap, nil
+	}
+	userList, err := us.userRepo.BatchGetByID(ctx, userIDs)
 	if err != nil {
 		return userMap, err
 	}
@@ -130,8 +134,8 @@ func (us *UserCommon) FormatUserBasicInfo(ctx context.Context, userInfo *entity.
 	userBasicInfo.Website = userInfo.Website
 	userBasicInfo.Location = userInfo.Location
 	userBasicInfo.IPInfo = userInfo.IPInfo
-	userBasicInfo.Status = schema.UserStatusShow[userInfo.Status]
-	if userBasicInfo.Status == schema.UserDeleted {
+	userBasicInfo.Status = constant.ConvertUserStatus(userInfo.Status, userInfo.MailStatus)
+	if userBasicInfo.Status == constant.UserDeleted {
 		userBasicInfo.Avatar = ""
 		userBasicInfo.DisplayName = "Anonymous"
 	}
@@ -151,7 +155,7 @@ func (us *UserCommon) MakeUsername(ctx context.Context, displayName string) (use
 		}
 	}
 
-	username = strings.ReplaceAll(displayName, " ", "_")
+	username = strings.ReplaceAll(displayName, " ", "-")
 	username = strings.ToLower(username)
 	suffix := ""
 

@@ -103,7 +103,7 @@ const Answers: FC = () => {
           value={curQuery}
           onChange={handleFilter}
           size="sm"
-          type="input"
+          type="search"
           placeholder={t('filter.placeholder')}
           style={{ width: '12.25rem' }}
         />
@@ -155,7 +155,7 @@ const Answers: FC = () => {
                 <td>{li.vote_count}</td>
                 <td>
                   <Stack>
-                    <BaseUserCard data={li.user_info} />
+                    <BaseUserCard data={li.user_info} nameMaxWidth="200px" />
 
                     <FormatTime
                       className="small text-secondary"

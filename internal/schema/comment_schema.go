@@ -26,7 +26,9 @@ type AddCommentReq struct {
 	// whether user can edit it
 	CanEdit bool `json:"-"`
 	// whether user can delete it
-	CanDelete bool `json:"-"`
+	CanDelete   bool   `json:"-"`
+	CaptchaID   string `json:"captcha_id"` // captcha_id
+	CaptchaCode string `json:"captcha_code"`
 }
 
 func (req *AddCommentReq) Check() (errFields []*validator.FormErrorField, err error) {
@@ -39,7 +41,9 @@ type RemoveCommentReq struct {
 	// comment id
 	CommentID string `validate:"required" json:"comment_id"`
 	// user id
-	UserID string `json:"-"`
+	UserID      string `json:"-"`
+	CaptchaID   string `json:"captcha_id"` // captcha_id
+	CaptchaCode string `json:"captcha_code"`
 }
 
 // UpdateCommentReq update comment request
@@ -54,16 +58,26 @@ type UpdateCommentReq struct {
 	UserID  string `json:"-"`
 	IsAdmin bool   `json:"-"`
 
-	CanAdd bool `json:"-"`
 	// whether user can edit it
 	CanEdit bool `json:"-"`
+
 	// whether user can delete it
-	CanDelete bool `json:"-"`
+	CaptchaID   string `json:"captcha_id"` // captcha_id
+	CaptchaCode string `json:"captcha_code"`
 }
 
 func (req *UpdateCommentReq) Check() (errFields []*validator.FormErrorField, err error) {
 	req.ParsedText = converter.Markdown2HTML(req.OriginalText)
 	return nil, nil
+}
+
+type UpdateCommentResp struct {
+	// comment id
+	CommentID string `json:"comment_id"`
+	// original comment content
+	OriginalText string `json:"original_text"`
+	// parsed comment content
+	ParsedText string `json:"parsed_text"`
 }
 
 // GetCommentListReq get comment list all request

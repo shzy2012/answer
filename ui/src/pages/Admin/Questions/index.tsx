@@ -112,7 +112,7 @@ const Questions: FC = () => {
         <Form.Control
           value={curQuery}
           size="sm"
-          type="input"
+          type="search"
           placeholder={t('filter.placeholder')}
           onChange={handleFilter}
           style={{ width: '12.25rem' }}
@@ -160,7 +160,7 @@ const Questions: FC = () => {
                 </td>
                 <td>
                   <Stack>
-                    <BaseUserCard data={li.user_info} />
+                    <BaseUserCard data={li.user_info} nameMaxWidth="130px" />
                     <FormatTime
                       className="small text-secondary"
                       time={li.create_time}

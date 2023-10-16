@@ -3,7 +3,6 @@ package questioncommon
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"time"
 
@@ -41,33 +40,33 @@ type QuestionRepo interface {
 	UpdateQuestionStatus(ctx context.Context, question *entity.Question) (err error)
 	UpdateQuestionStatusWithOutUpdateTime(ctx context.Context, question *entity.Question) (err error)
 	UpdateQuestionOperation(ctx context.Context, question *entity.Question) (err error)
-	SearchByTitleLike(ctx context.Context, title string) (questionList []*entity.Question, err error)
+	GetQuestionsByTitle(ctx context.Context, title string, pageSize int) (questionList []*entity.Question, err error)
 	UpdatePvCount(ctx context.Context, questionID string) (err error)
 	UpdateAnswerCount(ctx context.Context, questionID string, num int) (err error)
 	UpdateCollectionCount(ctx context.Context, questionID string, num int) (err error)
 	UpdateAccepted(ctx context.Context, question *entity.Question) (err error)
 	UpdateLastAnswer(ctx context.Context, question *entity.Question) (err error)
 	FindByID(ctx context.Context, id []string) (questionList []*entity.Question, err error)
-	AdminSearchList(ctx context.Context, search *schema.AdminQuestionSearch) ([]*entity.Question, int64, error)
+	AdminQuestionPage(ctx context.Context, search *schema.AdminQuestionPageReq) ([]*entity.Question, int64, error)
 	GetQuestionCount(ctx context.Context) (count int64, err error)
 	GetUserQuestionCount(ctx context.Context, userID string) (count int64, err error)
-	GetQuestionCountByIDs(ctx context.Context, ids []string) (count int64, err error)
-	GetQuestionIDsPage(ctx context.Context, page, pageSize int) (questionIDList []*schema.SiteMapQuestionInfo, err error)
+	SitemapQuestions(ctx context.Context, page, pageSize int) (questionIDList []*schema.SiteMapQuestionInfo, err error)
 }
 
 // QuestionCommon user service
 type QuestionCommon struct {
-	questionRepo     QuestionRepo
-	answerRepo       answercommon.AnswerRepo
-	voteRepo         activity_common.VoteRepo
-	followCommon     activity_common.FollowRepo
-	tagCommon        *tagcommon.TagCommonService
-	userCommon       *usercommon.UserCommon
-	collectionCommon *collectioncommon.CollectionCommon
-	AnswerCommon     *answercommon.AnswerCommon
-	metaService      *meta.MetaService
-	configService    *config.ConfigService
-	data             *data.Data
+	questionRepo         QuestionRepo
+	answerRepo           answercommon.AnswerRepo
+	voteRepo             activity_common.VoteRepo
+	followCommon         activity_common.FollowRepo
+	tagCommon            *tagcommon.TagCommonService
+	userCommon           *usercommon.UserCommon
+	collectionCommon     *collectioncommon.CollectionCommon
+	AnswerCommon         *answercommon.AnswerCommon
+	metaService          *meta.MetaService
+	configService        *config.ConfigService
+	activityQueueService activity_queue.ActivityQueueService
+	data                 *data.Data
 }
 
 func NewQuestionCommon(questionRepo QuestionRepo,
@@ -80,21 +79,22 @@ func NewQuestionCommon(questionRepo QuestionRepo,
 	answerCommon *answercommon.AnswerCommon,
 	metaService *meta.MetaService,
 	configService *config.ConfigService,
+	activityQueueService activity_queue.ActivityQueueService,
 	data *data.Data,
-
 ) *QuestionCommon {
 	return &QuestionCommon{
-		questionRepo:     questionRepo,
-		answerRepo:       answerRepo,
-		voteRepo:         voteRepo,
-		followCommon:     followCommon,
-		tagCommon:        tagCommon,
-		userCommon:       userCommon,
-		collectionCommon: collectionCommon,
-		AnswerCommon:     answerCommon,
-		metaService:      metaService,
-		configService:    configService,
-		data:             data,
+		questionRepo:         questionRepo,
+		answerRepo:           answerRepo,
+		voteRepo:             voteRepo,
+		followCommon:         followCommon,
+		tagCommon:            tagCommon,
+		userCommon:           userCommon,
+		collectionCommon:     collectionCommon,
+		AnswerCommon:         answerCommon,
+		metaService:          metaService,
+		configService:        configService,
+		activityQueueService: activityQueueService,
+		data:                 data,
 	}
 }
 
@@ -282,17 +282,13 @@ func (qs *QuestionCommon) Info(ctx context.Context, questionID string, loginUser
 	}
 	showinfo.Answered = has
 
-	// login user  Collected information
-
-	CollectedMap, err := qs.collectionCommon.SearchObjectCollected(ctx, loginUserID, []string{dbinfo.ID})
+	collectedMap, err := qs.collectionCommon.SearchObjectCollected(ctx, loginUserID, []string{dbinfo.ID})
 	if err != nil {
-		log.Error("CollectionFunc.SearchObjectCollected", err)
+		return nil, err
 	}
-	_, ok = CollectedMap[dbinfo.ID]
-	if ok {
+	if len(collectedMap) > 0 {
 		showinfo.Collected = true
 	}
-
 	return showinfo, nil
 }
 
@@ -406,9 +402,7 @@ func (qs *QuestionCommon) FormatQuestions(ctx context.Context, questionList []*e
 		item := qs.ShowFormat(ctx, questionInfo)
 		list = append(list, item)
 		objectIds = append(objectIds, item.ID)
-		userIds = append(userIds, item.UserID)
-		userIds = append(userIds, item.LastEditUserID)
-		userIds = append(userIds, item.LastAnsweredUserID)
+		userIds = append(userIds, item.UserID, item.LastEditUserID, item.LastAnsweredUserID)
 	}
 	tagsMap, err := qs.tagCommon.BatchGetObjectTag(ctx, objectIds)
 	if err != nil {
@@ -421,38 +415,21 @@ func (qs *QuestionCommon) FormatQuestions(ctx context.Context, questionList []*e
 	}
 
 	for _, item := range list {
-		_, ok := tagsMap[item.ID]
-		if ok {
-			item.Tags = tagsMap[item.ID]
-		}
-		_, ok = userInfoMap[item.UserID]
-		if ok {
-			item.UserInfo = userInfoMap[item.UserID]
-		}
-		_, ok = userInfoMap[item.LastEditUserID]
-		if ok {
-			item.UpdateUserInfo = userInfoMap[item.LastEditUserID]
-		}
-		_, ok = userInfoMap[item.LastAnsweredUserID]
-		if ok {
-			item.LastAnsweredUserInfo = userInfoMap[item.LastAnsweredUserID]
-		}
+		item.Tags = tagsMap[item.ID]
+		item.UserInfo = userInfoMap[item.UserID]
+		item.UpdateUserInfo = userInfoMap[item.LastEditUserID]
+		item.LastAnsweredUserInfo = userInfoMap[item.LastAnsweredUserID]
 	}
-
 	if loginUserID == "" {
 		return list, nil
 	}
-	// //login user  Collected information
-	CollectedMap, err := qs.collectionCommon.SearchObjectCollected(ctx, loginUserID, objectIds)
-	if err != nil {
-		log.Error("CollectionFunc.SearchObjectCollected", err)
-	}
 
+	collectedMap, err := qs.collectionCommon.SearchObjectCollected(ctx, loginUserID, objectIds)
+	if err != nil {
+		return nil, err
+	}
 	for _, item := range list {
-		_, ok := CollectedMap[item.ID]
-		if ok {
-			item.Collected = true
-		}
+		item.Collected = collectedMap[item.ID]
 	}
 	return list, nil
 }
@@ -513,7 +490,7 @@ func (qs *QuestionCommon) CloseQuestion(ctx context.Context, req *schema.CloseQu
 		return err
 	}
 
-	activity_queue.AddActivity(&schema.ActivityMsg{
+	qs.activityQueueService.Send(ctx, &schema.ActivityMsg{
 		UserID:           questionInfo.UserID,
 		ObjectID:         questionInfo.ID,
 		OriginalObjectID: questionInfo.ID,
@@ -551,40 +528,26 @@ func (as *QuestionCommon) RemoveAnswer(ctx context.Context, id string) (err erro
 }
 
 func (qs *QuestionCommon) SitemapCron(ctx context.Context) {
-	data := &schema.SiteMapList{}
 	questionNum, err := qs.questionRepo.GetQuestionCount(ctx)
 	if err != nil {
-		log.Error("GetQuestionCount error", err)
+		log.Error(err)
 		return
 	}
-	if questionNum <= schema.SitemapMaxSize {
-		questionIDList, err := qs.questionRepo.GetQuestionIDsPage(ctx, 0, int(questionNum))
+	if questionNum <= constant.SitemapMaxSize {
+		_, err = qs.questionRepo.SitemapQuestions(ctx, 1, int(questionNum))
 		if err != nil {
-			log.Error("GetQuestionIDsPage error", err)
+			log.Errorf("get site map question error: %v", err)
+		}
+		return
+	}
+
+	totalPages := int(math.Ceil(float64(questionNum) / float64(constant.SitemapMaxSize)))
+	for i := 1; i <= totalPages; i++ {
+		_, err = qs.questionRepo.SitemapQuestions(ctx, i, constant.SitemapMaxSize)
+		if err != nil {
+			log.Errorf("get site map question error: %v", err)
 			return
 		}
-		data.QuestionIDs = questionIDList
-
-	} else {
-		nums := make([]int, 0)
-		totalpages := int(math.Ceil(float64(questionNum) / float64(schema.SitemapMaxSize)))
-		for i := 1; i <= totalpages; i++ {
-			siteMapPagedata := &schema.SiteMapPageList{}
-			nums = append(nums, i)
-			questionIDList, err := qs.questionRepo.GetQuestionIDsPage(ctx, i, int(schema.SitemapMaxSize))
-			if err != nil {
-				log.Error("GetQuestionIDsPage error", err)
-				return
-			}
-			siteMapPagedata.PageData = questionIDList
-			if setCacheErr := qs.SetCache(ctx, fmt.Sprintf(schema.SitemapPageCachekey, i), siteMapPagedata); setCacheErr != nil {
-				log.Errorf("set sitemap cron SetCache failed: %s", setCacheErr)
-			}
-		}
-		data.MaxPageNum = nums
-	}
-	if setCacheErr := qs.SetCache(ctx, schema.SitemapCachekey, data); setCacheErr != nil {
-		log.Errorf("set sitemap cron SetCache failed: %s", setCacheErr)
 	}
 }
 
@@ -594,7 +557,7 @@ func (qs *QuestionCommon) SetCache(ctx context.Context, cachekey string, info in
 		return errors.InternalServer(reason.UnknownError).WithError(err).WithStack()
 	}
 
-	err = qs.data.Cache.SetString(ctx, cachekey, string(infoStr), schema.DashBoardCacheTime)
+	err = qs.data.Cache.SetString(ctx, cachekey, string(infoStr), schema.DashboardCacheTime)
 	if err != nil {
 		return errors.InternalServer(reason.UnknownError).WithError(err).WithStack()
 	}

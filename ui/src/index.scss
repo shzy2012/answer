@@ -26,6 +26,11 @@ body {
 a {
   text-decoration: none;
 }
+// If the image does not have a `src` attribute, it must break and may not trigger the `onerror` event.
+// With or without the `alt` attribute, it is visually hidden directly.
+img[src=""] {
+  visibility: hidden !important;
+}
 
 .btn-link {
   text-decoration: none;
@@ -33,6 +38,10 @@ a {
 
 .fs-12 {
   font-size: 0.75rem;
+}
+
+.small {
+  font-size: 0.875rem;
 }
 
 .pic-auth-modal {
@@ -132,6 +141,13 @@ a {
   }
 }
 
+.name-ellipsis {
+  display: inline-block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 .text-truncate-1,
 .text-truncate-2,
 .text-truncate-3,
@@ -177,9 +193,6 @@ a {
   display: inline-block;
 }
 
-.object-fit-contain {
-  object-fit: contain;
-}
 .fmt {
   width: 100%;
   h1 {
@@ -249,14 +262,6 @@ a {
   flex-grow: 1;
   height: 128px;
 }
-.badge-label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  padding: 1px 0.5rem 2px;
-  height: 24px;
-}
 
 .review-text-delete {
   color: #842029;
@@ -313,6 +318,14 @@ a {
   font-size: 16px;
   width: 16px;
   height: 16px;
+  fill: currentColor;
+  vertical-align: -0.125em;
+}
+
+.algoliaSvg {
+  display: inline-block;
+  width: 92px;
+  height: 24px;
   fill: currentColor;
   vertical-align: -0.125em;
 }
