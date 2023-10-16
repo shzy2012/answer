@@ -8,7 +8,7 @@ type SiteInfo struct {
 	CreatedAt time.Time `xorm:"created TIMESTAMP created_at"`
 	UpdatedAt time.Time `xorm:"updated TIMESTAMP updated_at"`
 	Type      string    `xorm:"not null VARCHAR(64) type"`
-	Content   string    `xorm:"not null MEDIUMTEXT content"`
+	Content   string    `xorm:"not null LONGTEXT content"`
 	Status    int       `xorm:"not null default 1 INT(11) status"`
 }
 

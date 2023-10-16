@@ -25,8 +25,8 @@ type Comment struct {
 	QuestionID     string        `xorm:"not null default 0 BIGINT(20) question_id"`
 	VoteCount      int           `xorm:"not null default 0 INT(11) vote_count"`
 	Status         int           `xorm:"not null default 0 TINYINT(4) status"`
-	OriginalText   string        `xorm:"not null MEDIUMTEXT original_text"`
-	ParsedText     string        `xorm:"not null MEDIUMTEXT parsed_text"`
+	OriginalText   string        `xorm:"not null LONGTEXT original_text"`
+	ParsedText     string        `xorm:"not null LONGTEXT parsed_text"`
 }
 
 // TableName comment table name

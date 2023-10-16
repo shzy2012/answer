@@ -16,8 +16,8 @@ type Tag struct {
 	MainTagSlugName string    `xorm:"not null default '' VARCHAR(35) main_tag_slug_name"`
 	SlugName        string    `xorm:"not null default '' unique VARCHAR(35) slug_name"`
 	DisplayName     string    `xorm:"not null default '' VARCHAR(35) display_name"`
-	OriginalText    string    `xorm:"not null MEDIUMTEXT original_text"`
-	ParsedText      string    `xorm:"not null MEDIUMTEXT parsed_text"`
+	OriginalText    string    `xorm:"not null LONGTEXT original_text"`
+	ParsedText      string    `xorm:"not null LONGTEXT parsed_text"`
 	FollowCount     int       `xorm:"not null default 0 INT(11) follow_count"`
 	QuestionCount   int       `xorm:"not null default 0 INT(11) question_count"`
 	Status          int       `xorm:"not null default 1 INT(11) status"`

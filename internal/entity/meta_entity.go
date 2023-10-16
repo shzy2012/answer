@@ -16,7 +16,7 @@ type Meta struct {
 	UpdatedAt time.Time `xorm:"not null default CURRENT_TIMESTAMP updated TIMESTAMP updated_at"`
 	ObjectID  string    `xorm:"not null default 0 INDEX BIGINT(20) object_id"`
 	Key       string    `xorm:"not null VARCHAR(100) key"`
-	Value     string    `xorm:"not null MEDIUMTEXT value"`
+	Value     string    `xorm:"not null LONGTEXT value"`
 }
 
 // TableName meta table name

@@ -24,8 +24,8 @@ type Answer struct {
 	QuestionID     string    `xorm:"not null default 0 BIGINT(20) question_id"`
 	UserID         string    `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
 	LastEditUserID string    `xorm:"not null default 0 BIGINT(20) last_edit_user_id"`
-	OriginalText   string    `xorm:"not null MEDIUMTEXT original_text"`
-	ParsedText     string    `xorm:"not null MEDIUMTEXT parsed_text"`
+	OriginalText   string    `xorm:"not null LONGTEXT original_text"`
+	ParsedText     string    `xorm:"not null LONGTEXT parsed_text"`
 	Status         int       `xorm:"not null default 1 INT(11) status"`
 	Accepted       int       `xorm:"not null default 1 INT(11) adopted"`
 	CommentCount   int       `xorm:"not null default 0 INT(11) comment_count"`

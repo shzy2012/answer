@@ -97,8 +97,8 @@ func addRolePinAndHideFeatures(x *xorm.Engine) error {
 		UserID           string    `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
 		LastEditUserID   string    `xorm:"not null default 0 BIGINT(20) last_edit_user_id"`
 		Title            string    `xorm:"not null default '' VARCHAR(150) title"`
-		OriginalText     string    `xorm:"not null MEDIUMTEXT original_text"`
-		ParsedText       string    `xorm:"not null MEDIUMTEXT parsed_text"`
+		OriginalText     string    `xorm:"not null LONGTEXT original_text"`
+		ParsedText       string    `xorm:"not null LONGTEXT parsed_text"`
 		Status           int       `xorm:"not null default 1 INT(11) status"`
 		Pin              int       `xorm:"not null default 1 INT(11) pin"`
 		Show             int       `xorm:"not null default 1 INT(11) show"`

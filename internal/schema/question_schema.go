@@ -53,9 +53,9 @@ type ReopenQuestionReq struct {
 
 type QuestionAdd struct {
 	// question title
-	Title string `validate:"required,notblank,gte=6,lte=150" json:"title"`
+	Title string `validate:"required,notblank,gte=2,lte=150" json:"title"`
 	// content
-	Content string `validate:"required,notblank,gte=6,lte=65535" json:"content"`
+	Content string `validate:"required,notblank,gte=0,lte=65535" json:"content"`
 	// html
 	HTML string `json:"-"`
 	// tags

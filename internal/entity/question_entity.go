@@ -34,9 +34,9 @@ type Question struct {
 	UserID           string    `xorm:"not null default 0 BIGINT(20) INDEX user_id"`
 	InviteUserID     string    `xorm:"TEXT invite_user_id"`
 	LastEditUserID   string    `xorm:"not null default 0 BIGINT(20) last_edit_user_id"`
-	Title            string    `xorm:"not null default '' VARCHAR(150) title"`
-	OriginalText     string    `xorm:"not null MEDIUMTEXT original_text"`
-	ParsedText       string    `xorm:"not null MEDIUMTEXT parsed_text"`
+	Title            string    `xorm:"not null default '' VARCHAR(1500) title"`
+	OriginalText     string    `xorm:"not null LONGTEXT original_text"`
+	ParsedText       string    `xorm:"not null LONGTEXT parsed_text"`
 	Pin              int       `xorm:"not null default 1 INT(11) pin"`
 	Show             int       `xorm:"not null default 1 INT(11) show"`
 	Status           int       `xorm:"not null default 1 INT(11) status"`

@@ -1,0 +1,19 @@
+debug: false
+server:
+  http:
+    addr: 0.0.0.0:80
+data:
+  database:
+    driver: mysql
+    connection: root:admin@2023@tcp(172.31.223.17:5506)/answer
+  cache:
+    file_path: data/cache/cache.db
+i18n:
+  bundle_dir: data/i18n
+service_config:
+  upload_path: data/uploads
+swaggerui:
+  show: true
+  protocol: http
+  host: 127.0.0.1
+  address: :80
