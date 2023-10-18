@@ -1,0 +1,9 @@
+# alpine
+FROM registry.cn-shanghai.aliyuncs.com/pub_space/alpine:base
+
+WORKDIR /workplace
+COPY answer .
+COPY data data
+
+EXPOSE 80
+CMD ["/workplace/answer","run","-C","/workplace/data"]
