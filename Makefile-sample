@@ -1,0 +1,12 @@
+IMAGE = registry.cn-shanghai.aliyuncs.com/pub_space/answer:latest
+
+# 运行
+build:
+	CGO_ENABLED=0 GOOS=linux go build  -v -mod=vendor -o answer cmd/answer/main.go
+
+docker:
+	docker build -f Dockerfile -t ${IMAGE} .
+
+# 推送 image
+push:
+	docker push  ${IMAGE}
